@@ -6,6 +6,7 @@ import socket
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
+import mimetypes
 
 app = Flask(__name__)
 CORS(app)
@@ -33,12 +34,13 @@ html_template = """
     <style>
         @font-face {
             font-family: 'San Francisco';
-            src: local('San Francisco'), url('https://apple.com/fonts/SanFrancisco/SF-Pro-Text-Regular.otf') format('opentype');
+            src: url('https://apple.com/fonts/SanFrancisco/SF-Pro-Text-Regular.otf') format('opentype');
         }
         body {
             font-family: 'San Francisco', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             margin: 20px;
-            background-color: #f5f5f5;
+            background-color: #f9f9f9;
+            color: #333;
         }
         h1, h2 {
             color: #333;
@@ -75,6 +77,7 @@ html_template = """
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         a {
             text-decoration: none;
@@ -114,6 +117,7 @@ html_template = """
             text-align: center;
             color: #999;
             margin-bottom: 20px;
+            transition: border-color 0.3s, background-color 0.3s;
         }
         .drop-area.dragging {
             border-color: #007aff;
@@ -123,6 +127,24 @@ html_template = """
             max-width: 100px;
             max-height: 100px;
             margin-right: 10px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            object-fit: cover;
+        }
+        .icon {
+            width: 100px;
+            height: 100px;
+            margin-right: 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .icon img {
+            max-width: 60%;
+            max-height: 60%;
         }
         @media (max-width: 600px) {
             .file-details {
@@ -158,6 +180,18 @@ html_template = """
             <div class="file-details">
                 {% if file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
                     <img src="/files/{{ file }}" alt="{{ file }}" class="preview">
+                {% elif file.endswith(('.mp4', '.mov', '.avi')) %}
+                    <div class="icon">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/video-file.png" alt="Video">
+                    </div>
+                {% elif file.endswith(('.txt', '.pdf', '.docx')) %}
+                    <div class="icon">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/document.png" alt="Document">
+                    </div>
+                {% else %}
+                    <div class="icon">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/file.png" alt="File">
+                    </div>
                 {% endif %}
                 <div>
                     <a href="/files/{{ file }}">{{ file }}</a>
