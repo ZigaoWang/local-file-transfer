@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Download File</title>
+  </head>
+  <body>
+    <h1>Download File</h1>
+    <ul>
+      {% for file in files %}
+      <li><a href="/download/{{ file }}">{{ file }}</a></li>
+      {% endfor %}
+    </ul>
+  </body>
+</html>
