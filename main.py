@@ -1,15 +1,26 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string, redirect, url_for, flash
+from flask import Flask, request, send_from_directory, render_template_string, redirect, url_for, flash, jsonify
 import webbrowser
 import threading
 import socket
 from datetime import datetime
+from werkzeug.utils import secure_filename
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 app.secret_key = 'supersecretkey'  # Needed for flash messages
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+# Function to convert bytes to human-readable format
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['','K','M','G','T','P','E','Z']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Y', suffix)
 
 # HTML template with enhanced styling and functionality
 html_template = """
@@ -20,9 +31,14 @@ html_template = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local File Transfer</title>
     <style>
+        @font-face {
+            font-family: 'San Francisco';
+            src: local('San Francisco'), url('https://apple.com/fonts/SanFrancisco/SF-Pro-Text-Regular.otf') format('opentype');
+        }
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'San Francisco', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             margin: 20px;
+            background-color: #f5f5f5;
         }
         h1, h2 {
             color: #333;
@@ -37,14 +53,14 @@ html_template = """
         }
         input[type="submit"] {
             padding: 10px 20px;
-            background-color: #4CAF50;
+            background-color: #007aff;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
         }
         input[type="submit"]:hover {
-            background-color: #45a049;
+            background-color: #005bb5;
         }
         ul {
             list-style-type: none;
@@ -52,10 +68,17 @@ html_template = """
         }
         li {
             margin-bottom: 10px;
+            background-color: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         a {
             text-decoration: none;
-            color: #4CAF50;
+            color: #007aff;
         }
         a:hover {
             text-decoration: underline;
@@ -69,6 +92,50 @@ html_template = """
         .alert.success {
             background-color: #4CAF50;
         }
+        .delete-button {
+            background-color: #ff3b30;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .delete-button:hover {
+            background-color: #e60000;
+        }
+        .file-details {
+            display: flex;
+            flex-direction: column;
+        }
+        .drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            margin-bottom: 20px;
+        }
+        .drop-area.dragging {
+            border-color: #007aff;
+            background-color: #e6f7ff;
+        }
+        .preview {
+            max-width: 100px;
+            max-height: 100px;
+            margin-right: 10px;
+        }
+        @media (max-width: 600px) {
+            .file-details {
+                width: 100%;
+            }
+            li {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .delete-button {
+                margin-top: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -80,53 +147,110 @@ html_template = """
             {% endfor %}
         {% endif %}
     {% endwith %}
-    <h2>Upload a file</h2>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <input type="submit" value="Upload">
-    </form>
+    <div class="drop-area" id="drop-area">
+        <p>Drag & Drop files here or click to select files</p>
+    </div>
+    <input type="file" id="fileElem" multiple style="display:none">
     <h2>Available files</h2>
-    <ul>
+    <ul id="file-list">
     {% for file, size, timestamp in files %}
         <li>
-            <a href="/files/{{ file }}">{{ file }}</a> ({{ size }} bytes, uploaded at {{ timestamp }})
+            <div class="file-details">
+                {% if file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
+                    <img src="/files/{{ file }}" alt="{{ file }}" class="preview">
+                {% endif %}
+                <div>
+                    <a href="/files/{{ file }}">{{ file }}</a>
+                    <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                </div>
+            </div>
+            <button class="delete-button" onclick="deleteFile('{{ file }}')">Delete</button>
         </li>
     {% endfor %}
     </ul>
-    <form action="/download_all" method="post">
-        <input type="submit" value="Download All Files">
-    </form>
+    <script>
+        const dropArea = document.getElementById('drop-area');
+        const fileElem = document.getElementById('fileElem');
+
+        dropArea.addEventListener('click', () => fileElem.click());
+
+        fileElem.addEventListener('change', handleFiles);
+
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('dragging');
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.classList.remove('dragging');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            handleFiles({ target: { files } });
+        });
+
+        function handleFiles(event) {
+            const files = event.target.files;
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('file', files[i]);
+            }
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.text()).then(data => {
+                location.reload();
+            }).catch(error => {
+                alert('Error uploading files');
+            });
+        }
+
+        function deleteFile(fileName) {
+            fetch(`/delete/${fileName}`, {
+                method: 'DELETE'
+            }).then(response => response.text()).then(data => {
+                location.reload();
+            }).catch(error => {
+                alert('Error deleting file');
+            });
+        }
+    </script>
 </body>
 </html>
 """
 
 @app.route('/')
 def index():
-    files = [(f, os.path.getsize(os.path.join(UPLOAD_FOLDER, f)), datetime.fromtimestamp(os.path.getmtime(os.path.join(UPLOAD_FOLDER, f))).strftime('%Y-%m-%d %H:%M:%S')) for f in os.listdir(UPLOAD_FOLDER)]
+    files = [(f, sizeof_fmt(os.path.getsize(os.path.join(UPLOAD_FOLDER, f))), datetime.fromtimestamp(os.path.getmtime(os.path.join(UPLOAD_FOLDER, f))).strftime('%Y-%m-%d %H:%M:%S')) for f in os.listdir(UPLOAD_FOLDER)]
     return render_template_string(html_template, files=files)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        flash('No file part', 'danger')
-        return redirect(url_for('index'))
-    file = request.files['file']
-    if file.filename == '':
-        flash('No selected file', 'danger')
-        return redirect(url_for('index'))
-    file.save(os.path.join(UPLOAD_FOLDER, file.filename))
-    flash('File uploaded successfully', 'success')
+    files = request.files.getlist('file')
+    for file in files:
+        if file.filename == '':
+            flash('No selected file', 'danger')
+            return redirect(url_for('index'))
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(UPLOAD_FOLDER, filename))
+    flash('Files uploaded successfully', 'success')
     return redirect(url_for('index'))
 
 @app.route('/files/<filename>')
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-@app.route('/download_all', methods=['POST'])
-def download_all():
-    # Logic to download all files as a zip (not implemented for simplicity)
-    flash('Download all files functionality is not implemented yet', 'danger')
-    return redirect(url_for('index'))
+@app.route('/delete/<filename>', methods=['DELETE'])
+def delete_file(filename):
+    try:
+        os.remove(os.path.join(UPLOAD_FOLDER, filename))
+        flash('File deleted successfully', 'success')
+    except Exception as e:
+        flash(f'Error deleting file: {e}', 'danger')
+    return '', 204
 
 def open_browser(ip):
     webbrowser.open_new(f'http://{ip}:5000/')
