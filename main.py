@@ -16,13 +16,29 @@ UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+
 # Function to convert bytes to human-readable format
 def sizeof_fmt(num, suffix='B'):
-    for unit in ['','K','M','G','T','P','E','Z']:
+    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Y', suffix)
+
+
+# Function to get local IP address
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # does not even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = '127.0.0.1'
+    finally:
+        s.close()
+    return local_ip
+
 
 # HTML template with enhanced styling and functionality
 html_template = """
@@ -46,15 +62,22 @@ html_template = """
         h1, h2 {
             color: #333;
         }
-        form {
+        .upload-section {
             margin-bottom: 20px;
-        }
-        input[type="file"] {
-            padding: 10px;
-            border: 1px solid #ccc;
+            padding: 20px;
+            border: 2px dashed #ccc;
             border-radius: 4px;
+            text-align: center;
+            transition: border-color 0.3s, background-color 0.3s;
         }
-        input[type="submit"] {
+        .upload-section.dragging {
+            border-color: #007aff;
+            background-color: #e6f7ff;
+        }
+        .upload-section input[type="file"] {
+            display: none;
+        }
+        .upload-button {
             padding: 10px 20px;
             background-color: #007aff;
             color: white;
@@ -62,8 +85,22 @@ html_template = """
             border-radius: 4px;
             cursor: pointer;
         }
-        input[type="submit"]:hover {
+        .upload-button:hover {
             background-color: #005bb5;
+        }
+        .progress-bar {
+            display: none;
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-bar div {
+            height: 20px;
+            background-color: #007aff;
+            width: 0%;
+            transition: width 0.3s;
         }
         ul {
             list-style-type: none;
@@ -78,10 +115,12 @@ html_template = """
             display: flex;
             align-items: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
         }
         a {
             text-decoration: none;
             color: #007aff;
+            word-break: break-all;
         }
         a:hover {
             text-decoration: underline;
@@ -115,19 +154,38 @@ html_template = """
             display: flex;
             align-items: center;
             flex-grow: 1;
+            flex-wrap: wrap;
         }
-        .drop-area {
-            border: 2px dashed #ccc;
-            border-radius: 4px;
-            padding: 20px;
-            text-align: center;
-            color: #999;
+        .file-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .file-info span {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .search-bar {
             margin-bottom: 20px;
-            transition: border-color 0.3s, background-color 0.3s;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
         }
-        .drop-area.dragging {
-            border-color: #007aff;
-            background-color: #e6f7ff;
+        .sort-buttons {
+            margin-bottom: 20px;
+        }
+        .sort-button {
+            padding: 10px;
+            background-color: #007aff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .sort-button:hover {
+            background-color: #005bb5;
         }
         .preview {
             max-width: 100px;
@@ -188,10 +246,20 @@ html_template = """
             {% endfor %}
         {% endif %}
     {% endwith %}
-    <div class="drop-area" id="drop-area">
-        <p>Drag & Drop files or folders here or click to select</p>
+    <div class="upload-section" id="upload-section">
+        <p>Drag & Drop files here or click to select files</p>
+        <input type="file" id="fileElem" multiple>
+        <button class="upload-button" onclick="document.getElementById('fileElem').click()">Select Files</button>
+        <div class="progress-bar" id="progress-bar">
+            <div></div>
+        </div>
     </div>
-    <input type="file" id="fileElem" multiple webkitdirectory directory style="display:none">
+    <input type="text" id="search-bar" class="search-bar" placeholder="Search files...">
+    <div class="sort-buttons">
+        <button class="sort-button" onclick="sortFiles('name')">Sort by Name</button>
+        <button class="sort-button" onclick="sortFiles('size')">Sort by Size</button>
+        <button class="sort-button" onclick="sortFiles('date')">Sort by Date</button>
+    </div>
     <button class="clear-button" onclick="clearAllFiles()">Clear All Files</button>
     <h2>Available files</h2>
     <ul id="file-list">
@@ -199,17 +267,9 @@ html_template = """
         {% for file, size, timestamp, is_dir in files %}
             <li>
                 <div class="file-details">
-                    {% if is_dir %}
-                        <div class="icon">
-                            <img src="https://img.icons8.com/ios-filled/50/000000/folder-invoices--v1.png" alt="Folder">
-                        </div>
-                        <div>
-                            <a href="/browse/{{ subpath }}/{{ file }}">{{ file }}</a>
-                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
-                        </div>
-                    {% elif file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
+                    {% if file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
                         <img src="/files/{{ subpath }}/{{ file }}" alt="{{ file }}" class="preview">
-                        <div>
+                        <div class="file-info">
                             <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
                             <span>{{ size }}, uploaded at {{ timestamp }}</span>
                         </div>
@@ -217,7 +277,7 @@ html_template = """
                         <div class="icon">
                             <img src="https://img.icons8.com/ios-filled/50/000000/video-file.png" alt="Video">
                         </div>
-                        <div>
+                        <div class="file-info">
                             <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
                             <span>{{ size }}, uploaded at {{ timestamp }}</span>
                         </div>
@@ -225,7 +285,7 @@ html_template = """
                         <div class="icon">
                             <img src="https://img.icons8.com/ios-filled/50/000000/document.png" alt="Document">
                         </div>
-                        <div>
+                        <div class="file-info">
                             <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
                             <span>{{ size }}, uploaded at {{ timestamp }}</span>
                         </div>
@@ -233,7 +293,7 @@ html_template = """
                         <div class="icon">
                             <img src="https://img.icons8.com/ios-filled/50/000000/file.png" alt="File">
                         </div>
-                        <div>
+                        <div class="file-info">
                             <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
                             <span>{{ size }}, uploaded at {{ timestamp }}</span>
                         </div>
@@ -250,28 +310,32 @@ html_template = """
     {% endif %}
     </ul>
     <script>
-        const dropArea = document.getElementById('drop-area');
+        const uploadSection = document.getElementById('upload-section');
         const fileElem = document.getElementById('fileElem');
+        const localIp = "{{ local_ip }}";
+        const progressBar = document.getElementById('progress-bar');
+        const searchBar = document.getElementById('search-bar');
+        const fileList = document.getElementById('file-list');
 
-        dropArea.addEventListener('click', () => fileElem.click());
-
-        fileElem.addEventListener('change', handleFiles);
-
-        dropArea.addEventListener('dragover', (e) => {
+        uploadSection.addEventListener('dragover', (e) => {
             e.preventDefault();
-            dropArea.classList.add('dragging');
+            uploadSection.classList.add('dragging');
         });
 
-        dropArea.addEventListener('dragleave', () => {
-            dropArea.classList.remove('dragging');
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragging');
         });
 
-        dropArea.addEventListener('drop', (e) => {
+        uploadSection.addEventListener('drop', (e) => {
             e.preventDefault();
-            dropArea.classList.remove('dragging');
+            uploadSection.classList.remove('dragging');
             const files = e.dataTransfer.files;
             handleFiles({ target: { files } });
         });
+
+        fileElem.addEventListener('change', handleFiles);
+
+        searchBar.addEventListener('input', filterFiles);
 
         function handleFiles(event) {
             const files = event.target.files;
@@ -279,14 +343,23 @@ html_template = """
             for (let i = 0; i < files.length; i++) {
                 formData.append('file', files[i]);
             }
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.text()).then(data => {
-                location.reload();
-            }).catch(error => {
-                alert('Error uploading files');
-            });
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBar.style.display = 'block';
+                    progressBar.firstElementChild.style.width = percentComplete + '%';
+                }
+            };
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    location.reload();
+                } else {
+                    alert('Error uploading files');
+                }
+            };
+            xhr.send(formData);
         }
 
         function deleteFile(fileName) {
@@ -318,7 +391,7 @@ html_template = """
         }
 
         function shareFile(fileName) {
-            const url = `${window.location.origin}/files/${fileName}`;
+            const url = `http://${localIp}:5000/files/${fileName}`;
             navigator.clipboard.writeText(url).then(() => {
                 alert('Link copied to clipboard');
             }).catch(err => {
@@ -329,10 +402,45 @@ html_template = """
         function previewFile(fileName) {
             window.open(`/files/${fileName}`, '_blank');
         }
+
+        function filterFiles() {
+            const filter = searchBar.value.toLowerCase();
+            const files = fileList.getElementsByTagName('li');
+            Array.from(files).forEach((file) => {
+                const fileName = file.querySelector('a').textContent.toLowerCase();
+                if (fileName.includes(filter)) {
+                    file.style.display = '';
+                } else {
+                    file.style.display = 'none';
+                }
+            });
+        }
+
+        function sortFiles(criteria) {
+            const files = Array.from(fileList.getElementsByTagName('li'));
+            files.sort((a, b) => {
+                const aText = a.querySelector('a').textContent;
+                const bText = b.querySelector('a').textContent;
+                const aSize = parseFloat(a.querySelector('.file-info span').textContent);
+                const bSize = parseFloat(b.querySelector('.file-info span').textContent);
+                const aDate = new Date(a.querySelector('.file-info span').textContent);
+                const bDate = new Date(b.querySelector('.file-info span').textContent);
+
+                if (criteria === 'name') {
+                    return aText.localeCompare(bText);
+                } else if (criteria === 'size') {
+                    return aSize - bSize;
+                } else if (criteria === 'date') {
+                    return bDate - aDate;
+                }
+            });
+            files.forEach((file) => fileList.appendChild(file));
+        }
     </script>
 </body>
 </html>
 """
+
 
 @app.route('/')
 @app.route('/browse/<path:subpath>')
@@ -346,7 +454,9 @@ def index(subpath=''):
         timestamp = datetime.fromtimestamp(os.path.getmtime(full_path)).strftime('%Y-%m-%d %H:%M:%S')
         files.append((f, size, timestamp, is_dir))
     files.sort(key=lambda x: x[2], reverse=True)  # Sort by timestamp, most recent first
-    return render_template_string(html_template, files=files, subpath=subpath)
+    local_ip = get_local_ip()
+    return render_template_string(html_template, files=files, subpath=subpath, local_ip=local_ip)
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -360,9 +470,11 @@ def upload_file():
     flash('Files uploaded successfully', 'success')
     return redirect(url_for('index'))
 
+
 @app.route('/files/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
 
 @app.route('/delete/<path:filename>', methods=['DELETE'])
 def delete_file(filename):
@@ -376,6 +488,7 @@ def delete_file(filename):
     except Exception as e:
         flash(f'Error deleting file: {e}', 'danger')
     return '', 204
+
 
 @app.route('/clear_all', methods=['DELETE'])
 def clear_all_files():
@@ -394,24 +507,15 @@ def clear_all_files():
         flash(f'Error clearing files: {e}', 'danger')
     return '', 204
 
+
 @app.route('/download/<path:filename>')
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # does not even have to be reachable
-        s.connect(('10.254.254.254', 1))
-        local_ip = s.getsockname()[0]
-    except Exception:
-        local_ip = '127.0.0.1'
-    finally:
-        s.close()
-    return local_ip
 
 def open_browser(ip):
     webbrowser.open_new(f'http://{ip}:5000/')
+
 
 if __name__ == "__main__":
     # Get the local IP address
