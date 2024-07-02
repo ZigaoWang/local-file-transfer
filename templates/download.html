@@ -2,14 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <title>Download File</title>
   </head>
   <body>
-    <h1>Download File</h1>
-    <ul>
-      {% for file in files %}
-      <li><a href="/download/{{ file }}">{{ file }}</a></li>
-      {% endfor %}
-    </ul>
+    <div class="container mt-5">
+      <h1 class="text-center">Download File</h1>
+      <ul class="list-group mt-4">
+        {% for file in files %}
+        <li class="list-group-item">
+          <a href="/download/{{ file }}">{{ file }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
   </body>
 </html>
