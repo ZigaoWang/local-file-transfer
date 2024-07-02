@@ -1,7 +1,3 @@
 
-.idea/inspectionProfiles/profiles_settings.xml
-.idea/local-file-transfer.iml
-.idea/misc.xml
-.idea/modules.xml
-.idea/vcs.xml
-file.txt
+.DS_Store
+/uploads
