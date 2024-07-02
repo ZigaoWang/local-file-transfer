@@ -398,13 +398,24 @@ def clear_all_files():
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # does not even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = '127.0.0.1'
+    finally:
+        s.close()
+    return local_ip
+
 def open_browser(ip):
     webbrowser.open_new(f'http://{ip}:5000/')
 
 if __name__ == "__main__":
     # Get the local IP address
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(socket.getfqdn())
+    local_ip = get_local_ip()
     print(f"Server started at {local_ip}:5000")
 
     threading.Timer(1, open_browser, args=[local_ip]).start()
