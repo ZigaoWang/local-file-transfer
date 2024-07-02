@@ -7,6 +7,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import mimetypes
+import shutil
 
 app = Flask(__name__)
 CORS(app)
@@ -75,7 +76,6 @@ html_template = """
             border: 1px solid #ccc;
             border-radius: 4px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
@@ -95,20 +95,26 @@ html_template = """
         .alert.success {
             background-color: #4CAF50;
         }
-        .delete-button {
+        .delete-button, .download-button, .share-button, .preview-button {
             background-color: #ff3b30;
             color: white;
             border: none;
             border-radius: 4px;
             padding: 5px 10px;
             cursor: pointer;
+            margin-left: 5px;
         }
-        .delete-button:hover {
-            background-color: #e60000;
-        }
+        .download-button { background-color: #34c759; }
+        .share-button { background-color: #ff9500; }
+        .preview-button { background-color: #ffcc00; }
+        .delete-button:hover { background-color: #e60000; }
+        .download-button:hover { background-color: #28a745; }
+        .share-button:hover { background-color: #e68a00; }
+        .preview-button:hover { background-color: #e6b800; }
         .file-details {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            flex-grow: 1;
         }
         .drop-area {
             border: 2px dashed #ccc;
@@ -146,6 +152,19 @@ html_template = """
             max-width: 60%;
             max-height: 60%;
         }
+        .clear-button {
+            background-color: #ff3b30;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            display: block;
+        }
+        .clear-button:hover {
+            background-color: #e60000;
+        }
         @media (max-width: 600px) {
             .file-details {
                 width: 100%;
@@ -154,7 +173,7 @@ html_template = """
                 flex-direction: column;
                 align-items: flex-start;
             }
-            .delete-button {
+            .delete-button, .download-button, .share-button, .preview-button {
                 margin-top: 10px;
             }
         }
@@ -170,37 +189,65 @@ html_template = """
         {% endif %}
     {% endwith %}
     <div class="drop-area" id="drop-area">
-        <p>Drag & Drop files here or click to select files</p>
+        <p>Drag & Drop files or folders here or click to select</p>
     </div>
-    <input type="file" id="fileElem" multiple style="display:none">
+    <input type="file" id="fileElem" multiple webkitdirectory directory style="display:none">
+    <button class="clear-button" onclick="clearAllFiles()">Clear All Files</button>
     <h2>Available files</h2>
     <ul id="file-list">
-    {% for file, size, timestamp in files %}
-        <li>
-            <div class="file-details">
-                {% if file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
-                    <img src="/files/{{ file }}" alt="{{ file }}" class="preview">
-                {% elif file.endswith(('.mp4', '.mov', '.avi')) %}
-                    <div class="icon">
-                        <img src="https://img.icons8.com/ios-filled/50/000000/video-file.png" alt="Video">
-                    </div>
-                {% elif file.endswith(('.txt', '.pdf', '.docx')) %}
-                    <div class="icon">
-                        <img src="https://img.icons8.com/ios-filled/50/000000/document.png" alt="Document">
-                    </div>
-                {% else %}
-                    <div class="icon">
-                        <img src="https://img.icons8.com/ios-filled/50/000000/file.png" alt="File">
-                    </div>
-                {% endif %}
-                <div>
-                    <a href="/files/{{ file }}">{{ file }}</a>
-                    <span>{{ size }}, uploaded at {{ timestamp }}</span>
+    {% if files %}
+        {% for file, size, timestamp, is_dir in files %}
+            <li>
+                <div class="file-details">
+                    {% if is_dir %}
+                        <div class="icon">
+                            <img src="https://img.icons8.com/ios-filled/50/000000/folder-invoices--v1.png" alt="Folder">
+                        </div>
+                        <div>
+                            <a href="/browse/{{ subpath }}/{{ file }}">{{ file }}</a>
+                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                        </div>
+                    {% elif file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) %}
+                        <img src="/files/{{ subpath }}/{{ file }}" alt="{{ file }}" class="preview">
+                        <div>
+                            <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
+                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                        </div>
+                    {% elif file.endswith(('.mp4', '.mov', '.avi')) %}
+                        <div class="icon">
+                            <img src="https://img.icons8.com/ios-filled/50/000000/video-file.png" alt="Video">
+                        </div>
+                        <div>
+                            <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
+                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                        </div>
+                    {% elif file.endswith(('.txt', '.pdf', '.docx')) %}
+                        <div class="icon">
+                            <img src="https://img.icons8.com/ios-filled/50/000000/document.png" alt="Document">
+                        </div>
+                        <div>
+                            <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
+                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                        </div>
+                    {% else %}
+                        <div class="icon">
+                            <img src="https://img.icons8.com/ios-filled/50/000000/file.png" alt="File">
+                        </div>
+                        <div>
+                            <a href="/files/{{ subpath }}/{{ file }}" target="_blank">{{ file }}</a>
+                            <span>{{ size }}, uploaded at {{ timestamp }}</span>
+                        </div>
+                    {% endif %}
                 </div>
-            </div>
-            <button class="delete-button" onclick="deleteFile('{{ file }}')">Delete</button>
-        </li>
-    {% endfor %}
+                <button class="download-button" onclick="downloadFile('{{ subpath }}/{{ file }}')">Download</button>
+                <button class="share-button" onclick="shareFile('{{ subpath }}/{{ file }}')">Share</button>
+                <button class="preview-button" onclick="previewFile('{{ subpath }}/{{ file }}')">Preview</button>
+                <button class="delete-button" onclick="deleteFile('{{ subpath }}/{{ file }}')">Delete</button>
+            </li>
+        {% endfor %}
+    {% else %}
+        <p>No files</p>
+    {% endif %}
     </ul>
     <script>
         const dropArea = document.getElementById('drop-area');
@@ -243,13 +290,44 @@ html_template = """
         }
 
         function deleteFile(fileName) {
-            fetch(`/delete/${fileName}`, {
-                method: 'DELETE'
-            }).then(response => response.text()).then(data => {
-                location.reload();
-            }).catch(error => {
-                alert('Error deleting file');
+            if (confirm('Are you sure you want to delete this file?')) {
+                fetch(`/delete/${fileName}`, {
+                    method: 'DELETE'
+                }).then(response => response.text()).then(data => {
+                    location.reload();
+                }).catch(error => {
+                    alert('Error deleting file');
+                });
+            }
+        }
+
+        function clearAllFiles() {
+            if (confirm('Are you sure you want to delete all files?')) {
+                fetch(`/clear_all`, {
+                    method: 'DELETE'
+                }).then(response => response.text()).then(data => {
+                    location.reload();
+                }).catch(error => {
+                    alert('Error deleting all files');
+                });
+            }
+        }
+
+        function downloadFile(fileName) {
+            window.location.href = `/download/${fileName}`;
+        }
+
+        function shareFile(fileName) {
+            const url = `${window.location.origin}/files/${fileName}`;
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Link copied to clipboard');
+            }).catch(err => {
+                alert('Error copying link');
             });
+        }
+
+        function previewFile(fileName) {
+            window.open(`/files/${fileName}`, '_blank');
         }
     </script>
 </body>
@@ -257,9 +335,18 @@ html_template = """
 """
 
 @app.route('/')
-def index():
-    files = [(f, sizeof_fmt(os.path.getsize(os.path.join(UPLOAD_FOLDER, f))), datetime.fromtimestamp(os.path.getmtime(os.path.join(UPLOAD_FOLDER, f))).strftime('%Y-%m-%d %H:%M:%S')) for f in os.listdir(UPLOAD_FOLDER)]
-    return render_template_string(html_template, files=files)
+@app.route('/browse/<path:subpath>')
+def index(subpath=''):
+    abs_path = os.path.join(UPLOAD_FOLDER, subpath)
+    files = []
+    for f in os.listdir(abs_path):
+        full_path = os.path.join(abs_path, f)
+        is_dir = os.path.isdir(full_path)
+        size = sizeof_fmt(os.path.getsize(full_path) if not is_dir else 0)
+        timestamp = datetime.fromtimestamp(os.path.getmtime(full_path)).strftime('%Y-%m-%d %H:%M:%S')
+        files.append((f, size, timestamp, is_dir))
+    files.sort(key=lambda x: x[2], reverse=True)  # Sort by timestamp, most recent first
+    return render_template_string(html_template, files=files, subpath=subpath)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -273,18 +360,43 @@ def upload_file():
     flash('Files uploaded successfully', 'success')
     return redirect(url_for('index'))
 
-@app.route('/files/<filename>')
+@app.route('/files/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-@app.route('/delete/<filename>', methods=['DELETE'])
+@app.route('/delete/<path:filename>', methods=['DELETE'])
 def delete_file(filename):
     try:
-        os.remove(os.path.join(UPLOAD_FOLDER, filename))
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
         flash('File deleted successfully', 'success')
     except Exception as e:
         flash(f'Error deleting file: {e}', 'danger')
     return '', 204
+
+@app.route('/clear_all', methods=['DELETE'])
+def clear_all_files():
+    try:
+        for filename in os.listdir(UPLOAD_FOLDER):
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            try:
+                if os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+                else:
+                    os.remove(file_path)
+            except Exception as e:
+                flash(f'Error deleting file: {e}', 'danger')
+        flash('All files deleted successfully', 'success')
+    except Exception as e:
+        flash(f'Error clearing files: {e}', 'danger')
+    return '', 204
+
+@app.route('/download/<path:filename>')
+def download_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 def open_browser(ip):
     webbrowser.open_new(f'http://{ip}:5000/')
@@ -292,7 +404,7 @@ def open_browser(ip):
 if __name__ == "__main__":
     # Get the local IP address
     hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
+    local_ip = socket.gethostbyname(socket.getfqdn())
     print(f"Server started at {local_ip}:5000")
 
     threading.Timer(1, open_browser, args=[local_ip]).start()
