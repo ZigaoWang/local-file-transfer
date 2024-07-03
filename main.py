@@ -37,6 +37,22 @@ def get_local_ip():
         s.close()
     return local_ip
 
+# Function to print logo
+def print_logo():
+    logo = r"""
+   __                 __  _____ __      ______                  ___       
+  / /  ___  _______ _/ / / __(_) /__   /_  __/______ ____  ___ / _/__ ____
+ / /__/ _ \/ __/ _ `/ / / _// / / -_)   / / / __/ _ `/ _ \(_-</ _/ -_) __/
+/____/\___/\__/\_,_/_/ /_/ /_/_/\__/   /_/ /_/  \_,_/_//_/___/_/ \__/_/   
+    """
+    print("--------------------------------------------------")
+    print(logo)
+    print("Local File Transfer")
+    print("Made with 💜 by Zigao Wang.")
+    print("This project is licensed under MIT License.")
+    print("GitHub Repo: https://github.com/ZigaoWang/local-file-transfer/")
+    print("--------------------------------------------------")
+
 # HTML template with enhanced styling and functionality
 html_template = """
 <!doctype html>
@@ -126,21 +142,6 @@ html_template = """
             width: 100%;
             max-width: 600px;
             box-sizing: border-box;
-        }
-        .sort-buttons {
-            margin-bottom: 20px;
-        }
-        .sort-button {
-            padding: 10px;
-            background-color: #007aff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 5px;
-        }
-        .sort-button:hover {
-            background-color: #005bb5;
         }
         .file-list {
             width: 100%;
@@ -233,6 +234,21 @@ html_template = """
                 width: 100%;
             }
         }
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.7em;
+            color: #8b949e;
+        }
+        
+        footer a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -256,11 +272,6 @@ html_template = """
             </div>
         </div>
         <input type="text" id="search-bar" class="search-bar" placeholder="Search files...">
-        <div class="sort-buttons">
-            <button class="sort-button" onclick="sortFiles('name')">Sort by Name</button>
-            <button class="sort-button" onclick="sortFiles('size')">Sort by Size</button>
-            <button class="sort-button" onclick="sortFiles('date')">Sort by Date</button>
-        </div>
         <div class="file-list" id="file-list">
         {% if files %}
             {% for file, size, timestamp, is_dir in files %}
@@ -295,6 +306,9 @@ html_template = """
         </div>
         <button class="clear-button" onclick="clearAllFiles()">Clear All Files</button>
     </div>
+    <footer>
+        Powered by <a href="https://github.com/ZigaoWang/local-file-transfer/" target="_blank">Local File Transfer</a> by <a href="https://zigao.wanng" target="_blank">Zigao Wang</a>
+    </footer>
     <script>
         const uploadSection = document.getElementById('upload-section');
         const fileElem = document.getElementById('fileElem');
@@ -399,27 +413,6 @@ html_template = """
                 }
             });
         }
-
-        function sortFiles(criteria) {
-            const files = Array.from(fileList.getElementsByClassName('file-card'));
-            files.sort((a, b) => {
-                const aText = a.querySelector('a').textContent;
-                const bText = b.querySelector('a').textContent;
-                const aSize = parseFloat(a.querySelector('span').textContent);
-                const bSize = parseFloat(b.querySelector('span').textContent);
-                const aDate = new Date(a.querySelector('span').textContent);
-                const bDate = new Date(b.querySelector('span').textContent);
-
-                if (criteria === 'name') {
-                    return aText.localeCompare(bText);
-                } else if (criteria === 'size') {
-                    return aSize - bSize;
-                } else if (criteria === 'date') {
-                    return bDate - aDate;
-                }
-            });
-            files.forEach((file) => fileList.appendChild(file));
-        }
     </script>
 </body>
 </html>
@@ -496,6 +489,7 @@ def open_browser(ip):
 if __name__ == "__main__":
     # Get the local IP address
     local_ip = get_local_ip()
+    print_logo()
     print(f"Server started at {local_ip}:5000")
 
     threading.Timer(1, open_browser, args=[local_ip]).start()
