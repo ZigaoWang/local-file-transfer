@@ -6,7 +6,6 @@ import socket
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
-import mimetypes
 import shutil
 
 app = Flask(__name__)
